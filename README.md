@@ -113,6 +113,81 @@ A single API server handles both ingestion and search. There is no need for rout
 
 ---
 
+## Project Structure
+
+This is a Go monorepo. Each service is an independent binary with its own `main.go`.
+
+```
+Learn_logging_system/
+│
+├── docker-compose.yml              # Spins up Postgres, Kafka, Zookeeper, Elasticsearch + all services
+├── .env.example                    # Shared environment variable template
+├── README.md
+│
+├── services/
+│   ├── api-server/                 # HTTP service: POST /logs + GET /logs
+│   │   ├── Dockerfile
+│   │   ├── go.mod
+│   │   ├── main.go
+│   │   └── internal/
+│   │       ├── handler/
+│   │       │   ├── ingest.go       # POST /logs — writes logs + outbox in one transaction
+│   │       │   └── search.go       # GET /logs — queries Elasticsearch
+│   │       ├── db/
+│   │       │   ├── postgres.go     # pgx connection pool
+│   │       │   └── queries.go      # SQL for logs + outbox inserts
+│   │       ├── elastic/
+│   │       │   └── client.go       # Elasticsearch search client
+│   │       └── config/
+│   │           └── config.go       # Env var loading
+│   │
+│   ├── relay-worker/               # Outbox processor → Kafka producer
+│   │   ├── Dockerfile
+│   │   ├── go.mod
+│   │   ├── main.go
+│   │   └── internal/
+│   │       ├── poller/
+│   │       │   └── poller.go       # SELECT FOR UPDATE SKIP LOCKED polling loop
+│   │       ├── producer/
+│   │       │   └── kafka.go        # Kafka producer with manual ack (confluent-kafka-go)
+│   │       └── config/
+│   │           └── config.go
+│   │
+│   └── kafka-consumer/             # Kafka consumer → Elasticsearch sync
+│       ├── Dockerfile
+│       ├── go.mod
+│       ├── main.go
+│       └── internal/
+│           ├── consumer/
+│           │   └── kafka.go        # Kafka consumer with manual offset commit
+│           ├── elastic/
+│           │   └── sync.go         # Elasticsearch upsert by log id (idempotent)
+│           └── config/
+│               └── config.go
+│
+├── db/
+│   └── migrations/
+│       ├── 001_create_logs.sql
+│       └── 002_create_outbox.sql
+│
+└── scripts/
+    ├── seed.sh                     # Insert sample log rows for local testing
+    └── reset.sh                    # Drop and recreate the database
+```
+
+### Key Go libraries
+
+| Concern | Library |
+|---|---|
+| HTTP router | [`net/http`](https://pkg.go.dev/net/http) + [`chi`](https://github.com/go-chi/chi) |
+| Postgres client | [`pgx/v5`](https://github.com/jackc/pgx) |
+| Kafka client | [`confluent-kafka-go`](https://github.com/confluentinc/confluent-kafka-go) |
+| Elasticsearch client | [`go-elasticsearch/v8`](https://github.com/elastic/go-elasticsearch) |
+| Config / env | [`godotenv`](https://github.com/joho/godotenv) |
+| DB migrations | [`golang-migrate`](https://github.com/golang-migrate/migrate) |
+
+---
+
 ## Getting Started
 
 > Setup instructions will be added as services are implemented.
