@@ -8,20 +8,57 @@ A hands-on exploration of building a production-grade log ingestion and search s
 
 ```mermaid
 flowchart TD
-    Client -->|"POST /logs"| APIServer["API Server"]
-    APIServer -->|"BEGIN transaction"| Postgres[("Postgres")]
-    Postgres --> logsTable["logs table\n(source of truth)"]
-    Postgres --> outboxTable["outbox table\n(status = PENDING)"]
+    subgraph clients [Clients]
+        WriteClient["Client"]
+        ReadClient["Client"]
+    end
 
-    RelayWorker["Relay Worker\n(Outbox Processor)"] -->|"SELECT FOR UPDATE SKIP LOCKED\npoll PENDING rows"| outboxTable
-    RelayWorker -->|"publish + publisher confirm"| RabbitMQ[["RabbitMQ\nexchange: logs / queue: logs"]]
-    RelayWorker -->|"mark DONE on confirm"| outboxTable
+    subgraph apiServer [API Server]
+        IngestHandler["POST /logs\n(Ingest Handler)"]
+        SearchHandler["GET /logs\n(Search Handler)"]
+    end
 
-    RMQConsumer["RabbitMQ Consumer\n(ES Sync Service)"] -->|"consume + basic.ack"| RabbitMQ
-    RMQConsumer -->|"upsert document"| Elasticsearch[("Elasticsearch")]
+    subgraph postgres [Postgres]
+        WritePool[("Write Pool\n(primary)\nINSERT + SELECT FOR UPDATE")]
+        ReadPool[("Read Pool\n(replica)\nSELECT outbox status")]
+        logsTable["logs table"]
+        outboxTable["outbox table"]
+        WritePool --> logsTable
+        WritePool --> outboxTable
+    end
 
-    Client2["Client"] -->|"GET /logs?query=..."| APIServer
-    APIServer -->|"full-text search"| Elasticsearch
+    subgraph messaging [Messaging]
+        RabbitMQ[["RabbitMQ\nexchange: logs / queue: logs"]]
+    end
+
+    subgraph search [Search]
+        Elasticsearch[("Elasticsearch")]
+    end
+
+    subgraph relayWorker [Relay Worker]
+        Poller["Outbox Poller"]
+        Producer["RabbitMQ Producer\n(publisher confirm)"]
+        Poller --> Producer
+    end
+
+    subgraph rmqConsumer [RabbitMQ Consumer]
+        Consumer["Consumer\n(basic.ack)"]
+        ESSync["ES Sync\n(upsert by id)"]
+        Consumer --> ESSync
+    end
+
+    WriteClient -->|"POST /logs"| IngestHandler
+    IngestHandler -->|"BEGIN transaction\nINSERT logs + outbox"| WritePool
+
+    ReadPool -->|"SELECT PENDING rows"| Poller
+    Poller -->|"SELECT FOR UPDATE SKIP LOCKED\nmark DONE on confirm"| WritePool
+    Producer -->|"publish"| RabbitMQ
+
+    RabbitMQ -->|"deliver"| Consumer
+    ESSync -->|"upsert"| Elasticsearch
+
+    ReadClient -->|"GET /logs?query=..."| SearchHandler
+    SearchHandler -->|"full-text search"| Elasticsearch
 ```
 
 ---
