@@ -65,14 +65,14 @@ flowchart TD
 
 ## Components
 
-| Component | Responsibility |
-|---|---|
-| **API Server** | Handles `POST /logs` (ingest) and `GET /logs` (search) |
-| **Postgres** | ACID source of truth; holds both `logs` and `outbox` tables |
-| **Relay Worker** | Polls the outbox for `PENDING` rows, publishes to RabbitMQ, marks rows `DONE` |
-| **RabbitMQ** | Durable message broker; exchange routes messages to the `logs` queue, decoupling the relay from ES sync |
-| **RabbitMQ Consumer** | Reads from the `logs` queue and upserts log documents into Elasticsearch |
-| **Elasticsearch** | Full-text search index serving all read queries |
+| Component             | Responsibility                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| **API Server**        | Handles `POST /logs` (ingest) and `GET /logs` (search)                                                  |
+| **Postgres**          | ACID source of truth; holds both `logs` and `outbox` tables                                             |
+| **Relay Worker**      | Polls the outbox for `PENDING` rows, publishes to RabbitMQ, marks rows `DONE`                           |
+| **RabbitMQ**          | Durable message broker; exchange routes messages to the `logs` queue, decoupling the relay from ES sync |
+| **RabbitMQ Consumer** | Reads from the `logs` queue and upserts log documents into Elasticsearch                                |
+| **Elasticsearch**     | Full-text search index serving all read queries                                                         |
 
 ---
 
@@ -110,25 +110,25 @@ flowchart TD
 
 ### `logs` table
 
-| Column | Type | Description |
-|---|---|---|
-| `id` | UUID PK | Unique log identifier |
-| `level` | VARCHAR | Severity: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
-| `message` | TEXT | Human-readable log message |
-| `service_name` | VARCHAR | Originating service |
-| `timestamp` | TIMESTAMPTZ | When the event occurred |
-| `metadata` | JSONB | Arbitrary structured context (stack traces, request IDs, etc.) |
-| `created_at` | TIMESTAMPTZ | Row insertion time |
+| Column         | Type        | Description                                                    |
+| -------------- | ----------- | -------------------------------------------------------------- |
+| `id`           | UUID PK     | Unique log identifier                                          |
+| `level`        | VARCHAR     | Severity: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`            |
+| `message`      | TEXT        | Human-readable log message                                     |
+| `service_name` | VARCHAR     | Originating service                                            |
+| `timestamp`    | TIMESTAMPTZ | When the event occurred                                        |
+| `metadata`     | JSONB       | Arbitrary structured context (stack traces, request IDs, etc.) |
+| `created_at`   | TIMESTAMPTZ | Row insertion time                                             |
 
 ### `outbox` table
 
-| Column | Type | Description |
-|---|---|---|
-| `id` | UUID PK | Outbox row identifier |
-| `log_id` | UUID FK | References `logs.id` |
-| `status` | VARCHAR | `PENDING`, `DONE`, or `FAILED` |
-| `payload` | JSONB | Serialised log document to publish |
-| `created_at` | TIMESTAMPTZ | When the outbox row was created |
+| Column         | Type        | Description                                |
+| -------------- | ----------- | ------------------------------------------ |
+| `id`           | UUID PK     | Outbox row identifier                      |
+| `log_id`       | UUID FK     | References `logs.id`                       |
+| `status`       | VARCHAR     | `PENDING`, `DONE`, or `FAILED`             |
+| `payload`      | JSONB       | Serialised log document to publish         |
+| `created_at`   | TIMESTAMPTZ | When the outbox row was created            |
 | `processed_at` | TIMESTAMPTZ | When the row transitioned out of `PENDING` |
 
 ---
@@ -136,16 +136,20 @@ flowchart TD
 ## Key Design Patterns
 
 ### Transactional Outbox Pattern
+
 Writing the log and the outbox row in a single Postgres transaction guarantees **no messages are lost** even if the relay worker crashes. The outbox row remains `PENDING` and will be retried when the worker restarts. This eliminates the dual-write problem (write to DB then publish to RabbitMQ) where a crash between the two steps causes data loss.
 
 ### CQRS (Command Query Responsibility Segregation)
+
 Writes go to Postgres (strongly consistent, ACID). Reads go to Elasticsearch (fast full-text search). The two stores are **eventually consistent** by design — Elasticsearch reflects Postgres after the relay and consumer have processed the outbox row.
 
 ### At-Least-Once Delivery
+
 - **Producer side**: The relay only marks a row `DONE` after RabbitMQ returns a publisher confirm. A crash before the confirm leaves the row `PENDING` for retry.
 - **Consumer side**: The RabbitMQ consumer sends `basic.ack` only after a successful Elasticsearch upsert. On failure it sends `basic.nack` with `requeue=true`, causing RabbitMQ to redeliver the message. The upsert is safe to repeat because it is idempotent by log `id`.
 
 ### No API Gateway
+
 A single API server handles both ingestion and search. There is no need for routing federation, cross-service auth, or rate-limit aggregation at this scope.
 
 ---
@@ -214,14 +218,14 @@ Learn_logging_system/
 
 ### Key Go libraries
 
-| Concern | Library |
-|---|---|
-| HTTP router | [`gin`](https://github.com/gin-gonic/gin) |
-| Postgres client | [`pgx/v5`](https://github.com/jackc/pgx) |
-| RabbitMQ client | [`amqp091-go`](https://github.com/rabbitmq/amqp091-go) |
+| Concern              | Library                                                              |
+| -------------------- | -------------------------------------------------------------------- |
+| HTTP router          | [`gin`](https://github.com/gin-gonic/gin)                            |
+| Postgres client      | [`pgx/v5`](https://github.com/jackc/pgx)                             |
+| RabbitMQ client      | [`amqp091-go`](https://github.com/rabbitmq/amqp091-go)               |
 | Elasticsearch client | [`go-elasticsearch/v8`](https://github.com/elastic/go-elasticsearch) |
-| Config / env | [`godotenv`](https://github.com/joho/godotenv) |
-| DB migrations | [`golang-migrate`](https://github.com/golang-migrate/migrate) |
+| Config / env         | [`godotenv`](https://github.com/joho/godotenv)                       |
+| DB migrations        | [`golang-migrate`](https://github.com/golang-migrate/migrate)        |
 
 ---
 
@@ -230,7 +234,8 @@ Learn_logging_system/
 > Setup instructions will be added as services are implemented.
 
 Services to implement:
-- [ ] API Server (HTTP ingestion + search endpoints)
+
+- [x] API Server (HTTP ingestion + search endpoints)
 - [ ] Postgres schema migrations
 - [ ] Relay Worker
 - [ ] RabbitMQ Consumer / ES Sync Service
