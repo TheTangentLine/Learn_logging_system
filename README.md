@@ -179,7 +179,7 @@ Learn_logging_system/
 
 | Concern | Library |
 |---|---|
-| HTTP router | [`net/http`](https://pkg.go.dev/net/http) + [`chi`](https://github.com/go-chi/chi) |
+| HTTP router | [`gin`](https://github.com/gin-gonic/gin) |
 | Postgres client | [`pgx/v5`](https://github.com/jackc/pgx) |
 | RabbitMQ client | [`amqp091-go`](https://github.com/rabbitmq/amqp091-go) |
 | Elasticsearch client | [`go-elasticsearch/v8`](https://github.com/elastic/go-elasticsearch) |
