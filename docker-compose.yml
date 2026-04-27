@@ -1,0 +1,76 @@
+services:
+
+  # ── Postgres ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: logging
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d logging"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Elasticsearch ────────────────────────────────────────────────────────────
+  elasticsearch:
+    image: elasticsearch:8.13.4
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  # ── Migrations (one-shot) ────────────────────────────────────────────────────
+  migrate:
+    image: migrate/migrate
+    restart: "no"
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://user:password@postgres:5432/logging?sslmode=disable"
+      - "up"
+    volumes:
+      - ./db/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── API Server ───────────────────────────────────────────────────────────────
+  api-server:
+    build:
+      context: services/api-server
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_WRITE_URL: postgres://user:password@postgres:5432/logging?sslmode=disable
+      DATABASE_READ_URL: postgres://user:password@postgres:5432/logging?sslmode=disable
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      PORT: "8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  es_data:
