@@ -208,8 +208,10 @@ Learn_logging_system/
 │
 ├── db/
 │   └── migrations/
-│       ├── 001_create_logs.sql
-│       └── 002_create_outbox.sql
+│       ├── 001_create_logs.up.sql
+│       ├── 001_create_logs.down.sql
+│       ├── 002_create_outbox.up.sql
+│       └── 002_create_outbox.down.sql
 │
 └── scripts/
     ├── seed.sh                     # Insert sample log rows for local testing
