@@ -227,18 +227,52 @@ Learn_logging_system/
 | RabbitMQ client      | [`amqp091-go`](https://github.com/rabbitmq/amqp091-go)               |
 | Elasticsearch client | [`go-elasticsearch/v8`](https://github.com/elastic/go-elasticsearch) |
 | Config / env         | [`godotenv`](https://github.com/joho/godotenv)                       |
-| DB migrations        | [`golang-migrate`](https://github.com/golang-migrate/migrate)        |
 
 ---
 
 ## Getting Started
 
-> Setup instructions will be added as services are implemented.
+### Prerequisites
 
-Services to implement:
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) v2+
+- Copy the env template: `cp .env.example .env`
+
+### Run locally
+
+```bash
+# Build the api-server image, run Postgres + Elasticsearch, apply migrations, start all services
+docker compose up --build
+
+# Tear down all containers and remove named volumes
+docker compose down -v
+```
+
+### Available endpoints (once running)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/logs` | Ingest a log entry |
+| `GET` | `/logs?q=&level=&service=` | Search logs via Elasticsearch |
+| `GET` | `/health` | Ping write + read Postgres pools |
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/logs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "level": "ERROR",
+    "message": "database connection failed",
+    "service_name": "auth-service",
+    "timestamp": "2026-04-28T00:00:00Z",
+    "metadata": {"attempt": 3}
+  }'
+```
+
+### Services to implement
 
 - [x] API Server (HTTP ingestion + search endpoints)
-- [ ] Postgres schema migrations
+- [x] Postgres schema migrations
+- [x] Docker Compose for local orchestration
 - [ ] Relay Worker
 - [ ] RabbitMQ Consumer / ES Sync Service
-- [ ] Docker Compose for local orchestration
