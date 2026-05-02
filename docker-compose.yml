@@ -71,6 +71,33 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── RabbitMQ ─────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI — http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Relay Worker ─────────────────────────────────────────────────────────────
+  relay-worker:
+    build:
+      context: services/relay-worker
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_WRITE_URL: postgres://user:password@postgres:5432/logging?sslmode=disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   es_data:
