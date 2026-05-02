@@ -1,0 +1,29 @@
+name: CI — relay-worker
+
+on:
+  push:
+    paths:
+      - "services/relay-worker/**"
+      - ".github/workflows/ci_relay-worker.yml"
+  pull_request:
+    paths:
+      - "services/relay-worker/**"
+      - ".github/workflows/ci_relay-worker.yml"
+
+jobs:
+  build:
+    name: Go build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/relay-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: services/relay-worker/go.sum
+
+      - name: Build
+        run: make build
