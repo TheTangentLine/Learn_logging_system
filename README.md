@@ -148,6 +148,15 @@ Writes go to Postgres (strongly consistent, ACID). Reads go to Elasticsearch (fa
 - **Producer side**: The relay only marks a row `DONE` after RabbitMQ returns a publisher confirm. A crash before the confirm leaves the row `PENDING` for retry.
 - **Consumer side**: The RabbitMQ consumer sends `basic.ack` only after a successful Elasticsearch upsert. On failure it sends `basic.nack` with `requeue=true`, causing RabbitMQ to redeliver the message. The upsert is safe to repeat because it is idempotent by log `id`.
 
+### LISTEN/NOTIFY + Fallback Polling
+
+The Relay Worker uses two separate Postgres connections:
+
+1. **Listen connection** (`pgx.Conn`) — dedicated to `LISTEN outbox_ready`. Postgres fires a `pg_notify('outbox_ready', ...)` via trigger on every `INSERT INTO outbox`, which wakes the worker immediately with sub-millisecond latency.
+2. **Write pool** (`pgxpool.Pool`) — used exclusively for `SELECT FOR UPDATE SKIP LOCKED` and `UPDATE` operations.
+
+`WaitForNotification` is called with a 30-second timeout. If no notification arrives within the window (e.g., the trigger fired before the worker reconnected after a restart), the timeout fires and acts as a **fallback poll**, ensuring no rows are stuck permanently. This hybrid approach gives the responsiveness of an event-driven system with the reliability of polling.
+
 ### No API Gateway
 
 A single API server handles both ingestion and search. There is no need for routing federation, cross-service auth, or rate-limit aggregation at this scope.
@@ -188,9 +197,12 @@ Learn_logging_system/
 │   │   ├── main.go
 │   │   └── internal/
 │   │       ├── poller/
-│   │       │   └── poller.go       # SELECT FOR UPDATE SKIP LOCKED polling loop
+│   │       │   └── poller.go       # LISTEN/NOTIFY + 30s fallback poll + batch publisher
 │   │       ├── producer/
 │   │       │   └── rabbitmq.go     # RabbitMQ producer with publisher confirms (amqp091-go)
+│   │       ├── db/
+│   │       │   ├── postgres.go     # NewWritePool + NewListenConn (dedicated LISTEN connection)
+│   │       │   └── queries.go      # FetchPending, MarkDone, MarkFailed
 │   │       └── config/
 │   │           └── config.go
 │   │
@@ -211,7 +223,9 @@ Learn_logging_system/
 │       ├── 001_create_logs.up.sql
 │       ├── 001_create_logs.down.sql
 │       ├── 002_create_outbox.up.sql
-│       └── 002_create_outbox.down.sql
+│       ├── 002_create_outbox.down.sql
+│       ├── 003_outbox_notify_trigger.up.sql
+│       └── 003_outbox_notify_trigger.down.sql
 │
 └── scripts/
     ├── seed.sh                     # Insert sample log rows for local testing
@@ -274,5 +288,5 @@ curl -X POST http://localhost:8080/logs \
 - [x] API Server (HTTP ingestion + search endpoints)
 - [x] Postgres schema migrations
 - [x] Docker Compose for local orchestration
-- [ ] Relay Worker
+- [x] Relay Worker
 - [ ] RabbitMQ Consumer / ES Sync Service
