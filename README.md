@@ -265,6 +265,8 @@ make test   # run `go test` (with `-race`) in api-server, relay-worker, rmq-cons
 make check # same stack: vet + build + test per service (mirrors CI for those workloads)
 ```
 
+### Run locally
+
 ```bash
 # Build the api-server image, run Postgres + Elasticsearch, apply migrations, start all services
 docker compose up --build
@@ -272,6 +274,16 @@ docker compose up --build
 # Tear down all containers and remove named volumes
 docker compose down -v
 ```
+
+### Seed sample logs (optional)
+
+[`scripts/seed.sh`](scripts/seed.sh) checks **`GET /health`** on the API, then **`POST`**s several example log payloads (mixed levels/services) through the HTTP ingest path so they flow via outbox → relay-worker → RabbitMQ → **rmq-consumer** into Elasticsearch. From the repo root:
+
+```bash
+bash scripts/seed.sh
+```
+
+Override the API base URL if needed (`API_URL=http://localhost:8080 bash scripts/seed.sh` is equivalent to the default). You can also run **`make -C scripts seed`** (see [`scripts/Makefile`](scripts/Makefile)). After it completes, try the **`curl`** examples printed at the end of the script for **`GET /logs`**.
 
 ### Available endpoints (once running)
 
