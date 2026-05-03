@@ -98,6 +98,21 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── RabbitMQ Consumer (Elasticsearch sync) ─────────────────────────────────────
+  rmq-consumer:
+    build:
+      context: services/rmq-consumer
+      dockerfile: Dockerfile
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   es_data:
