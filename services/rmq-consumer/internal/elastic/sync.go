@@ -33,25 +33,33 @@ func NewSyncer(url string) (*Syncer, error) {
 	return &Syncer{es: c}, nil
 }
 
-// Upsert validates body as Log JSON and indexes it with document id equal to log id (idempotent).
-func (s *Syncer) Upsert(ctx context.Context, body []byte) error {
+// ParseAndEncodeLog unmarshals ingest JSON and returns canonical UTF-8 JSON for indexing alongside the document id.
+func ParseAndEncodeLog(body []byte) (payload []byte, docID string, err error) {
 	var doc model.Log
 	if err := json.Unmarshal(body, &doc); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+		return nil, "", fmt.Errorf("%w: %w", ErrInvalidPayload, err)
 	}
 	if doc.ID == uuid.Nil || doc.Level == "" || doc.Message == "" || doc.ServiceName == "" || doc.Timestamp.IsZero() || doc.CreatedAt.IsZero() {
-		return fmt.Errorf("%w: missing required fields", ErrInvalidPayload)
+		return nil, "", fmt.Errorf("%w: missing required fields", ErrInvalidPayload)
 	}
-
-	payload, err := json.Marshal(doc)
+	payload, err = json.Marshal(doc)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+		return nil, "", fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+	}
+	return payload, doc.ID.String(), nil
+}
+
+// Upsert validates body as Log JSON and indexes it with document id equal to log id (idempotent).
+func (s *Syncer) Upsert(ctx context.Context, body []byte) error {
+	payload, docID, err := ParseAndEncodeLog(body)
+	if err != nil {
+		return err
 	}
 
 	res, err := s.es.Index(
 		logsIndex,
 		bytes.NewReader(payload),
-		s.es.Index.WithDocumentID(doc.ID.String()),
+		s.es.Index.WithDocumentID(docID),
 		s.es.Index.WithRefresh("false"),
 		s.es.Index.WithContext(ctx),
 	)
