@@ -256,9 +256,14 @@ Learn_logging_system/
 
 The stack includes an **`rmq-consumer`** service (see `docker-compose.yml`). It requires **`RABBITMQ_URL`** and **`ELASTICSEARCH_URL`**; `compose` sets these for in-network hosts. For a local binary run, set the same variables (see [`.env.example`](.env.example)).
 
-Path-scoped GitHub Actions workflows live under [`.github/workflows/`](.github/workflows/) (for example `ci_rmq-consumer.yml` runs `make build` when `services/rmq-consumer/` changes).
+Path-scoped GitHub Actions workflows live under [`.github/workflows/`](.github/workflows/) (for example `ci_rmq-consumer.yml` runs `make check` when `services/rmq-consumer/` changes).
 
-### Run locally
+### Go tests from the repo root
+
+```bash
+make test   # run `go test` (with `-race`) in api-server, relay-worker, rmq-consumer
+make check # same stack: vet + build + test per service (mirrors CI for those workloads)
+```
 
 ```bash
 # Build the api-server image, run Postgres + Elasticsearch, apply migrations, start all services
