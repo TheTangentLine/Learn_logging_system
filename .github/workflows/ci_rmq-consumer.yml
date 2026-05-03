@@ -1,0 +1,29 @@
+name: CI — rmq-consumer
+
+on:
+  push:
+    paths:
+      - "services/rmq-consumer/**"
+      - ".github/workflows/ci_rmq-consumer.yml"
+  pull_request:
+    paths:
+      - "services/rmq-consumer/**"
+      - ".github/workflows/ci_rmq-consumer.yml"
+
+jobs:
+  build:
+    name: Go build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/rmq-consumer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: services/rmq-consumer/go.sum
+
+      - name: Build
+        run: make build
