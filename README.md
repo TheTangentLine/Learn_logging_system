@@ -57,7 +57,7 @@ flowchart TD
     RabbitMQ -->|"deliver"| Consumer
     ESSync -->|"upsert"| Elasticsearch
 
-    ReadClient -->|"GET /logs?query=..."| SearchHandler
+    ReadClient -->|"GET /logs?q=..."| SearchHandler
     SearchHandler -->|"full-text search"| Elasticsearch
 ```
 
@@ -95,13 +95,13 @@ flowchart TD
 
 ### RabbitMQ Consumer (ES Sync Service)
 
-1. Consumes messages from the RabbitMQ `logs` queue.
+1. Consumes messages from the durable RabbitMQ queue `logs` (bound to the `logs` direct exchange).
 2. Upserts the log document into Elasticsearch using the log `id` as the document key (idempotent).
-3. Sends `basic.ack` to RabbitMQ only after a successful Elasticsearch write; sends `basic.nack` with `requeue=true` on failure.
+3. Sends `basic.ack` to RabbitMQ only after a successful Elasticsearch write; sends `basic.nack` with `requeue=true` on transient failures (such as Elasticsearch errors); invalid payloads use `basic.nack` with `requeue=false` so the queue cannot be poisoned indefinitely.
 
 ### Read Path
 
-1. Client sends `GET /logs?query=<term>&level=<level>&service=<name>` to the API Server.
+1. Client sends `GET /logs?q=<term>&level=<level>&service=<name>` to the API Server.
 2. API Server queries Elasticsearch and returns matching log documents.
 
 ---
@@ -146,7 +146,7 @@ Writes go to Postgres (strongly consistent, ACID). Reads go to Elasticsearch (fa
 ### At-Least-Once Delivery
 
 - **Producer side**: The relay only marks a row `DONE` after RabbitMQ returns a publisher confirm. A crash before the confirm leaves the row `PENDING` for retry.
-- **Consumer side**: The RabbitMQ consumer sends `basic.ack` only after a successful Elasticsearch upsert. On failure it sends `basic.nack` with `requeue=true`, causing RabbitMQ to redeliver the message. The upsert is safe to repeat because it is idempotent by log `id`.
+- **Consumer side**: The RabbitMQ consumer sends `basic.ack` only after a successful Elasticsearch upsert. On **transient** failures it sends `basic.nack` with `requeue=true`, causing RabbitMQ to redeliver; **invalid** messages are negatively acknowledged without requeue so they are not replayed forever. The upsert is safe to repeat because it is idempotent by log `id`.
 
 ### LISTEN/NOTIFY + Fallback Polling
 
@@ -208,15 +208,18 @@ Learn_logging_system/
 │   │
 │   └── rmq-consumer/               # RabbitMQ consumer → Elasticsearch sync
 │       ├── Dockerfile
+│       ├── Makefile               # Local / CI entry (e.g. `make build`)
 │       ├── go.mod
 │       ├── main.go
 │       └── internal/
 │           ├── consumer/
-│           │   └── rabbitmq.go     # RabbitMQ consumer with basic.ack / basic.nack
+│           │   └── rabbitmq.go    # RabbitMQ consumer with basic.ack / basic.nack
 │           ├── elastic/
-│           │   └── sync.go         # Elasticsearch upsert by log id (idempotent)
+│           │   └── sync.go        # Elasticsearch upsert by log id (idempotent)
+│           ├── model/
+│           │   └── log.go         # Ingest JSON shape (mirrors api-server model)
 │           └── config/
-│               └── config.go
+│               └── config.go      # RABBITMQ_URL, ELASTICSEARCH_URL
 │
 ├── db/
 │   └── migrations/
@@ -250,6 +253,10 @@ Learn_logging_system/
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) v2+
 - Copy the env template: `cp .env.example .env`
+
+The stack includes an **`rmq-consumer`** service (see `docker-compose.yml`). It requires **`RABBITMQ_URL`** and **`ELASTICSEARCH_URL`**; `compose` sets these for in-network hosts. For a local binary run, set the same variables (see [`.env.example`](.env.example)).
+
+Path-scoped GitHub Actions workflows live under [`.github/workflows/`](.github/workflows/) (for example `ci_rmq-consumer.yml` runs `make build` when `services/rmq-consumer/` changes).
 
 ### Run locally
 
@@ -289,4 +296,4 @@ curl -X POST http://localhost:8080/logs \
 - [x] Postgres schema migrations
 - [x] Docker Compose for local orchestration
 - [x] Relay Worker
-- [ ] RabbitMQ Consumer / ES Sync Service
+- [x] RabbitMQ Consumer / ES Sync Service
